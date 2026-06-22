@@ -1,0 +1,14 @@
+# Environment
+.env
+
+# Temporary files
+tmp/
+docs/
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/

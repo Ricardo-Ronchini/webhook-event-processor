@@ -5,9 +5,11 @@ import (
 	"math/big"
 )
 
+// lowercase letters only — avoids visual ambiguity (0/O, 1/l) and is URL-safe without encoding
 const charset = "abcdefghijklmnopqrstuvwxyz"
 
-func GenerateCustomGuideID() string {
+// GenerateID returns a random 15-character lowercase alphabetic ID
+func GenerateID() string {
 	const length int = 15
 	b := make([]byte, length)
 

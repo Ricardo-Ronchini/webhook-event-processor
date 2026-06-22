@@ -23,6 +23,6 @@ func (h *Helper) TimeNowUTC(utc ...int) time.Time {
 	return now.In(timezone)
 }
 
-func (h *Helper) GenerateGuideID() string {
-	return common.GenerateCustomGuideID()
+func (h *Helper) GenerateRandomID() string {
+	return common.GenerateID()
 }
