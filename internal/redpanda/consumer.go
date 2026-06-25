@@ -2,6 +2,7 @@ package redpanda
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,8 +14,8 @@ type Consumer struct {
 	client *kgo.Client
 }
 
-// NewConsumer cria um consumer vinculado a um consumer group.
-// O group é registrado no broker na primeira chamada a Poll.
+// NewConsumer creates a consumer bound to a consumer group.
+// The group is registered on the broker on the first call to Poll.
 func NewConsumer(groupID string, topics []string) (*Consumer, error) {
 	brokers := common.GetEnvArray("BROKERS", []string{})
 
@@ -22,7 +23,7 @@ func NewConsumer(groupID string, topics []string) (*Consumer, error) {
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup(groupID),
 		kgo.ConsumeTopics(topics...),
-		kgo.AutoCommitMarks(), // só commita o que for explicitamente marcado
+		kgo.AutoCommitMarks(), // only commits what is explicitly marked
 		kgo.AllowAutoTopicCreation(),
 	)
 	if err != nil {
@@ -32,10 +33,10 @@ func NewConsumer(groupID string, topics []string) (*Consumer, error) {
 	return &Consumer{client: client}, nil
 }
 
-// Poll inicia o loop de consumo. Para cada mensagem recebida, chama handler.
-// Se handler retornar nil, o offset é marcado para commit.
-// Se handler retornar erro, a mensagem NÃO é commitada — será re-entregue.
-// Retorna quando ctx for cancelado (graceful shutdown).
+// Poll starts the consumption loop. For each received message, it calls handler.
+// If handler returns nil, the offset is marked for commit.
+// If handler returns an error, the message is NOT committed — it will be redelivered.
+// Returns when ctx is cancelled (graceful shutdown).
 func (c *Consumer) Poll(ctx context.Context, handler func(context.Context, Event) error) error {
 	for {
 		fetches := c.client.PollFetches(ctx)
@@ -60,14 +61,14 @@ func (c *Consumer) Poll(ctx context.Context, handler func(context.Context, Event
 			event := eventFromRecord(record)
 
 			if err := handler(ctx, event); err != nil {
-				// não marca commit — mensagem será re-entregue
+				// do not mark commit — message will be redelivered
 				return
 			}
 
 			c.client.MarkCommitRecords(record)
 		})
 
-		// flush dos commits marcados
+		// flush marked commits
 		commitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		c.client.CommitMarkedOffsets(commitCtx)
 		cancel()
@@ -78,8 +79,8 @@ func (c *Consumer) Close() {
 	c.client.Close()
 }
 
-// eventFromRecord reconstrói um Event a partir de um kgo.Record,
-// lendo os campos dos headers e o payload do Value.
+// eventFromRecord reconstructs an Event from a kgo.Record,
+// reading fields from the headers and payload from the Value.
 func eventFromRecord(record *kgo.Record) Event {
 	headers := make(map[string]string, len(record.Headers))
 	for _, h := range record.Headers {
@@ -88,12 +89,25 @@ func eventFromRecord(record *kgo.Record) Event {
 
 	ts, _ := time.Parse(time.RFC3339, headers["ts"])
 
+	var payload struct {
+		InventoryID string `json:"inventory_id"`
+		ProductID   string `json:"product_id"`
+		SKU         string `json:"sku"`
+		Quantity    int    `json:"quantity"`
+		Warehouse   string `json:"warehouse"`
+	}
+	json.Unmarshal(record.Value, &payload)
+
 	return Event{
-		ID:        string(record.Key),
-		TenantID:  headers["tenant_id"],
-		Source:    headers["source"],
-		Type:      headers["type"],
-		Timestamp: ts,
-		Data:      record.Value,
+		ID:          string(record.Key),
+		TenantID:    headers["tenant_id"],
+		Source:      headers["source"],
+		Type:        headers["type"],
+		Timestamp:   ts,
+		InventoryID: payload.InventoryID,
+		ProductID:   payload.ProductID,
+		SKU:         payload.SKU,
+		Quantity:    payload.Quantity,
+		Warehouse:   payload.Warehouse,
 	}
 }
