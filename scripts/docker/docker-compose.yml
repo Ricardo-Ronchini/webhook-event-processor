@@ -1,0 +1,58 @@
+name: webhook-event-processor
+services:
+  db:
+    image: postgres:16
+    container_name: postgres_webhook_dev
+    restart: no
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: webhook_event_processor_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - webhook_event_processor_dev:/var/lib/postgresql/data
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.2
+    container_name: redpanda_webhook
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+      - --set redpanda.auto_create_topics_enabled=true
+      - --set redpanda.default_topic_partitions=3
+    restart: always
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+
+  redpanda-console:
+    container_name: redpanda-console
+    image: docker.redpanda.com/redpandadata/console:latest
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on:
+      - redpanda
+    restart: always
+    ports:
+      - "8080:8080"
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: dragonfly_webhook
+    restart: no
+    ports:
+      - "6379:6379"
+    ulimits:
+      memlock: -1
+
+volumes:
+  webhook_event_processor_dev:
